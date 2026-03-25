@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Inventory Catalog</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <a class="nav-brand" href="index.html">📦 InvTrack</a>
+  <a class="nav-link active" href="index.html">Catalog</a>
+  <a class="nav-link" href="sales.html">Order</a>
+  <a class="nav-link" href="admin.html">Admin</a>
+  <a class="nav-cart-btn" href="cart.html">
+    🛒 Cart
+    <span class="nav-cart-count" id="cart-count" style="display:none">0</span>
+  </a>
+</nav>
+
+<main>
+  <div class="page-header">
+    <h1>Inventory Catalog</h1>
+    <p>Browse all available products and current stock levels.</p>
+  </div>
+
+  <!-- TOOLBAR -->
+  <div class="toolbar">
+    <div class="search-box">
+      <span class="search-icon">🔍</span>
+      <input type="text" id="search" placeholder="Search by name, SKU, or description…">
+    </div>
+    <select class="filter-select" id="category-filter">
+      <option value="">All categories</option>
+    </select>
+    <select class="filter-select" id="stock-filter">
+      <option value="">All stock</option>
+      <option value="in">In stock</option>
+      <option value="low">Low stock</option>
+      <option value="out">Out of stock</option>
+    </select>
+    <select class="filter-select" id="sort-select">
+      <option value="name">Sort: Name</option>
+      <option value="price-asc">Price: Low → High</option>
+      <option value="price-desc">Price: High → Low</option>
+      <option value="stock">Stock level</option>
+    </select>
+  </div>
+
+  <!-- STATS BAR -->
+  <div id="stats-bar" style="display:flex;gap:24px;margin-bottom:24px;padding:16px 20px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);flex-wrap:wrap;">
+    <div><span style="font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;font-weight:600;">Total SKUs</span><br><span id="stat-total" style="font-family:var(--font-head);font-size:22px;font-weight:800;color:var(--accent)">—</span></div>
+    <div><span style="font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;font-weight:600;">In Stock</span><br><span id="stat-in" style="font-family:var(--font-head);font-size:22px;font-weight:800;color:var(--green)">—</span></div>
+    <div><span style="font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;font-weight:600;">Low Stock</span><br><span id="stat-low" style="font-family:var(--font-head);font-size:22px;font-weight:800;color:#f0b432">—</span></div>
+    <div><span style="font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;font-weight:600;">Out of Stock</span><br><span id="stat-out" style="font-family:var(--font-head);font-size:22px;font-weight:800;color:var(--red)">—</span></div>
+    <div style="margin-left:auto;display:flex;align-items:center;">
+      <button class="btn btn-secondary" id="refresh-btn" onclick="loadProducts()">↻ Refresh</button>
+    </div>
+  </div>
+
+  <!-- PRODUCT GRID -->
+  <div id="product-container">
+    <div class="loading-state">
+      <div class="spinner"></div>
+      <span>Loading inventory…</span>
+    </div>
+  </div>
+</main>
+
+<!-- PRODUCT DETAIL MODAL -->
+<div id="detail-modal" class="modal-overlay" style="display:none;" onclick="closeModal(event)">
+  <div class="modal" id="detail-modal-content">
+    <div id="detail-body"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="document.getElementById('detail-modal').style.display='none'">Close</button>
+      <a class="btn btn-primary" href="sales.html">Go to Order page →</a>
+    </div>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script src="utils.js"></script>
+<script>
+  let allProducts = [];
+
+  async function loadProducts() {
+    document.getElementById('product-container').innerHTML = `<div class="loading-state"><div class="spinner"></div><span>Loading…</span></div>`;
+    try {
+      const data = await API.getInventory(false); // show all including inactive in catalog
+      allProducts = data.products || [];
+      populateFilters(allProducts);
+      updateStats(allProducts);
+      renderProducts(applyFilters());
+    } catch (e) {
+      document.getElementById('product-container').innerHTML = `
+        <div class="empty-state">
+          <h3>Could not load inventory</h3>
+          <p style="margin-top:8px;font-size:13px;">Check your API URL in config.js and ensure the Apps Script is deployed.<br><br><code style="background:var(--bg3);padding:4px 10px;border-radius:6px;font-size:12px;">${e.message}</code></p>
+          <button class="btn btn-secondary" onclick="loadProducts()" style="margin-top:20px;">Try again</button>
+        </div>`;
+    }
+  }
+
+  function populateFilters(products) {
+    const cats = [...new Set(products.map(p => p.category).filter(Boolean))].sort();
+    const sel = document.getElementById('category-filter');
+    sel.innerHTML = '<option value="">All categories</option>' + cats.map(c => `<option value="${c}">${c}</option>`).join('');
+  }
+
+  function updateStats(products) {
+    document.getElementById('stat-total').textContent = products.length;
+    document.getElementById('stat-in').textContent = products.filter(p => p.stock > 5).length;
+    document.getElementById('stat-low').textContent = products.filter(p => p.stock > 0 && p.stock <= 5).length;
+    document.getElementById('stat-out').textContent = products.filter(p => p.stock === 0).length;
+  }
+
+  function applyFilters() {
+    const q = document.getElementById('search').value.toLowerCase();
+    const cat = document.getElementById('category-filter').value;
+    const stockF = document.getElementById('stock-filter').value;
+    const sort = document.getElementById('sort-select').value;
+
+    let list = allProducts.filter(p => {
+      if (q && !`${p.name} ${p.sku} ${p.description}`.toLowerCase().includes(q)) return false;
+      if (cat && p.category !== cat) return false;
+      if (stockF === 'in' && p.stock <= 5) return false;
+      if (stockF === 'low' && !(p.stock > 0 && p.stock <= 5)) return false;
+      if (stockF === 'out' && p.stock !== 0) return false;
+      return true;
+    });
+
+    list.sort((a, b) => {
+      if (sort === 'price-asc') return a.price - b.price;
+      if (sort === 'price-desc') return b.price - a.price;
+      if (sort === 'stock') return a.stock - b.stock;
+      return a.name.localeCompare(b.name);
+    });
+
+    return list;
+  }
+
+  function renderProducts(products) {
+    const container = document.getElementById('product-container');
+    if (!products.length) {
+      container.innerHTML = `<div class="empty-state"><h3>No products found</h3><p>Try adjusting your filters.</p></div>`;
+      return;
+    }
+    container.innerHTML = `<div class="product-grid">${products.map((p, i) => `
+      <div class="product-card" style="animation-delay:${i * 0.04}s" onclick="openDetail('${p.sku}')">
+        <div class="product-img">
+          ${p.imageUrl ? `<img src="${p.imageUrl}" alt="${p.name}" loading="lazy" onerror="this.parentElement.innerHTML='📦'">` : (productEmoji(p.category))}
+        </div>
+        <div class="product-body">
+          <div class="product-sku">${p.sku}</div>
+          <div class="product-name">${p.name}</div>
+          <span class="product-category">${p.category || 'General'}</span>
+          <div class="product-desc">${p.description || ''}</div>
+          <div class="product-footer">
+            <span class="product-price">${fmt(p.price)}</span>
+            ${stockBadge(p.stock)}
+          </div>
+        </div>
+      </div>`).join('')}</div>`;
+  }
+
+  function productEmoji(cat) {
+    const m = { Electronics:'💻', Clothing:'👕', Food:'🥗', Books:'📚', Furniture:'🛋️', Tools:'🔧', Toys:'🎮' };
+    return `<span style="font-size:44px">${m[cat] || '📦'}</span>`;
+  }
+
+  function openDetail(sku) {
+    const p = allProducts.find(x => x.sku === sku);
+    if (!p) return;
+    document.getElementById('detail-body').innerHTML = `
+      <div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:20px;">
+        <div style="width:100px;height:100px;background:var(--bg3);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:44px;flex-shrink:0;">
+          ${p.imageUrl ? `<img src="${p.imageUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:12px;" onerror="this.parentElement.innerHTML='📦'">` : productEmoji(p.category)}
+        </div>
+        <div style="flex:1;">
+          <div style="font-size:11px;color:var(--text3);font-weight:600;letter-spacing:.08em;text-transform:uppercase;margin-bottom:4px;">${p.sku}</div>
+          <h2 style="font-family:var(--font-head);font-size:22px;font-weight:700;color:var(--text);margin-bottom:8px;">${p.name}</h2>
+          <span class="product-category">${p.category || 'General'}</span>
+        </div>
+      </div>
+      ${p.description ? `<p style="color:var(--text2);font-size:14px;line-height:1.7;margin-bottom:16px;">${p.description}</p>` : ''}
+      <div style="display:flex;gap:24px;flex-wrap:wrap;padding:16px;background:var(--bg3);border-radius:var(--radius);border:1px solid var(--border);">
+        <div><div style="font-size:11px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.07em;">Price</div><div style="font-family:var(--font-head);font-size:24px;font-weight:800;color:var(--accent)">${fmt(p.price)}</div></div>
+        <div><div style="font-size:11px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.07em;">Stock</div><div style="margin-top:4px">${stockBadge(p.stock)}</div></div>
+        <div><div style="font-size:11px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.07em;">Status</div><div style="font-size:14px;font-weight:500;margin-top:4px;color:${p.active !== false ? 'var(--green)' : 'var(--red)'}">${p.active !== false ? '● Active' : '● Inactive'}</div></div>
+      </div>`;
+    document.getElementById('detail-modal').style.display = 'flex';
+  }
+
+  function closeModal(e) {
+    if (e.target.id === 'detail-modal') document.getElementById('detail-modal').style.display = 'none';
+  }
+
+  // Filter listeners
+  ['search', 'category-filter', 'stock-filter', 'sort-select'].forEach(id => {
+    document.getElementById(id).addEventListener('input', () => renderProducts(applyFilters()));
+    document.getElementById(id).addEventListener('change', () => renderProducts(applyFilters()));
+  });
+
+  loadProducts();
+</script>
+</body>
+</html>

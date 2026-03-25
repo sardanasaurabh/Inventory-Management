@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Place Order</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .sales-layout { display: grid; grid-template-columns: 1fr 320px; gap: 28px; align-items: start; }
+    @media (max-width: 900px) { .sales-layout { grid-template-columns: 1fr; } }
+    .sticky-sidebar { position: sticky; top: calc(var(--nav-h) + 20px); }
+
+    .mini-cart {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+    }
+    .mini-cart-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .mini-cart-header h3 {
+      font-family: var(--font-head);
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .mini-cart-items { max-height: 340px; overflow-y: auto; }
+    .mini-cart-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+    .mini-cart-item-name { flex: 1; font-size: 13px; font-weight: 500; color: var(--text); }
+    .mini-cart-item-qty { font-size: 12px; color: var(--text3); }
+    .mini-cart-item-price { font-size: 14px; font-weight: 700; font-family: var(--font-head); color: var(--accent); }
+    .mini-cart-footer { padding: 16px 20px; }
+    .mini-cart-total {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 14px;
+      margin-bottom: 14px;
+      border-bottom: 1px solid var(--border);
+    }
+    .mini-cart-total .label { font-size: 14px; font-weight: 600; color: var(--text2); }
+    .mini-cart-total .amount { font-family: var(--font-head); font-size: 20px; font-weight: 800; color: var(--accent); }
+    .empty-cart-msg { padding: 32px 20px; text-align: center; color: var(--text3); font-size: 14px; }
+
+    .product-card .product-footer { flex-direction: column; gap: 10px; align-items: flex-start; }
+    .card-actions { display: flex; gap: 8px; width: 100%; align-items: center; }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a class="nav-brand" href="index.html">📦 InvTrack</a>
+  <a class="nav-link" href="index.html">Catalog</a>
+  <a class="nav-link active" href="sales.html">Order</a>
+  <a class="nav-link" href="admin.html">Admin</a>
+  <a class="nav-cart-btn" href="cart.html">
+    🛒 Cart
+    <span class="nav-cart-count" id="cart-count" style="display:none">0</span>
+  </a>
+</nav>
+
+<main>
+  <div class="page-header">
+    <h1>Place an Order</h1>
+    <p>Select items and quantities, then proceed to checkout.</p>
+  </div>
+
+  <!-- TOOLBAR -->
+  <div class="toolbar" style="margin-bottom:20px;">
+    <div class="search-box">
+      <span class="search-icon">🔍</span>
+      <input type="text" id="search" placeholder="Search products…">
+    </div>
+    <select class="filter-select" id="category-filter">
+      <option value="">All categories</option>
+    </select>
+  </div>
+
+  <div class="sales-layout">
+    <!-- LEFT: Products -->
+    <div>
+      <div id="product-container">
+        <div class="loading-state"><div class="spinner"></div><span>Loading products…</span></div>
+      </div>
+    </div>
+
+    <!-- RIGHT: Mini cart -->
+    <div class="sticky-sidebar">
+      <div class="mini-cart">
+        <div class="mini-cart-header">
+          <h3>🛒 Current Cart</h3>
+          <button class="btn btn-secondary" style="padding:5px 12px;font-size:12px;" onclick="clearCart()">Clear</button>
+        </div>
+        <div class="mini-cart-items" id="mini-cart-items">
+          <div class="empty-cart-msg">No items yet.<br>Add products from the list.</div>
+        </div>
+        <div class="mini-cart-footer">
+          <div class="mini-cart-total">
+            <span class="label">Total</span>
+            <span class="amount" id="mini-total">₹0.00</span>
+          </div>
+          <a href="cart.html" class="btn btn-primary btn-full btn-lg" id="checkout-btn" style="pointer-events:none;opacity:0.4;">
+            Review &amp; Checkout →
+          </a>
+        </div>
+      </div>
+      <p style="text-align:center;font-size:12px;color:var(--text3);margin-top:12px;">Cart is saved in your browser</p>
+    </div>
+  </div>
+</main>
+
+<script src="config.js"></script>
+<script src="utils.js"></script>
+<script>
+  let allProducts = [];
+
+  async function loadProducts() {
+    try {
+      const data = await API.getInventory(true);
+      allProducts = data.products || [];
+      populateFilters(allProducts);
+      renderProducts(applyFilters());
+    } catch (e) {
+      document.getElementById('product-container').innerHTML = `
+        <div class="empty-state">
+          <h3>Could not load products</h3>
+          <p style="margin-top:8px;font-size:13px;">Ensure your API_URL is set in config.js<br><code style="background:var(--bg3);padding:4px 10px;border-radius:6px;font-size:12px;">${e.message}</code></p>
+          <button class="btn btn-secondary" onclick="loadProducts()" style="margin-top:16px;">Retry</button>
+        </div>`;
+    }
+  }
+
+  function populateFilters(products) {
+    const cats = [...new Set(products.map(p => p.category).filter(Boolean))].sort();
+    const sel = document.getElementById('category-filter');
+    sel.innerHTML = '<option value="">All categories</option>' + cats.map(c => `<option value="${c}">${c}</option>`).join('');
+  }
+
+  function applyFilters() {
+    const q = document.getElementById('search').value.toLowerCase();
+    const cat = document.getElementById('category-filter').value;
+    return allProducts.filter(p => {
+      if (p.stock === 0) return false; // hide out of stock on order page
+      if (q && !`${p.name} ${p.sku} ${p.description}`.toLowerCase().includes(q)) return false;
+      if (cat && p.category !== cat) return false;
+      return true;
+    });
+  }
+
+  function renderProducts(products) {
+    const container = document.getElementById('product-container');
+    if (!products.length) {
+      container.innerHTML = `<div class="empty-state"><h3>No products available</h3><p>All items may be out of stock or filtered out.</p></div>`;
+      return;
+    }
+    container.innerHTML = `<div class="product-grid">${products.map((p, i) => `
+      <div class="product-card" style="animation-delay:${i * 0.04}s">
+        <div class="product-img">
+          ${p.imageUrl ? `<img src="${p.imageUrl}" alt="${p.name}" loading="lazy" onerror="this.parentElement.innerHTML='<span style=font-size:40px>📦</span>'">` : `<span style="font-size:40px">${productEmoji(p.category)}</span>`}
+        </div>
+        <div class="product-body">
+          <div class="product-sku">${p.sku}</div>
+          <div class="product-name">${p.name}</div>
+          <span class="product-category">${p.category || 'General'}</span>
+          <div class="product-desc">${p.description || ''}</div>
+          <div class="product-footer">
+            <span class="product-price">${fmt(p.price)}</span>
+            <div class="card-actions">
+              <div class="qty-control">
+                <button class="qty-btn" onclick="adjustQty('${p.sku}', -1)">−</button>
+                <input class="qty-input" id="qty-${p.sku}" type="number" value="1" min="1" max="${p.stock}" readonly>
+                <button class="qty-btn" onclick="adjustQty('${p.sku}', 1)">+</button>
+              </div>
+              <button class="add-cart-btn" id="add-${p.sku}" onclick="addToCart('${p.sku}')">
+                + Add
+              </button>
+            </div>
+            ${stockBadge(p.stock)}
+          </div>
+        </div>
+      </div>`).join('')}</div>`;
+  }
+
+  function productEmoji(cat) {
+    const m = { Electronics:'💻', Clothing:'👕', Food:'🥗', Books:'📚', Furniture:'🛋️', Tools:'🔧', Toys:'🎮' };
+    return m[cat] || '📦';
+  }
+
+  function adjustQty(sku, delta) {
+    const input = document.getElementById(`qty-${sku}`);
+    const p = allProducts.find(x => x.sku === sku);
+    if (!input || !p) return;
+    let v = parseInt(input.value) + delta;
+    v = Math.max(1, Math.min(p.stock, v));
+    input.value = v;
+  }
+
+  function addToCart(sku) {
+    const p = allProducts.find(x => x.sku === sku);
+    const input = document.getElementById(`qty-${sku}`);
+    if (!p || !input) return;
+    const qty = parseInt(input.value);
+    Cart.add(p, qty);
+    // Visual feedback
+    const btn = document.getElementById(`add-${sku}`);
+    btn.classList.add('added');
+    btn.textContent = '✓ Added';
+    setTimeout(() => { btn.classList.remove('added'); btn.textContent = '+ Add'; }, 1400);
+    toast(`${p.name} × ${qty} added to cart`);
+    renderMiniCart();
+  }
+
+  function clearCart() {
+    Cart.clear();
+    renderMiniCart();
+    toast('Cart cleared', 'error');
+  }
+
+  function renderMiniCart() {
+    const items = Cart.get();
+    const container = document.getElementById('mini-cart-items');
+    const totalEl = document.getElementById('mini-total');
+    const checkoutBtn = document.getElementById('checkout-btn');
+
+    if (!items.length) {
+      container.innerHTML = `<div class="empty-cart-msg">No items yet.<br>Add products from the list.</div>`;
+      totalEl.textContent = fmt(0);
+      checkoutBtn.style.opacity = '0.4';
+      checkoutBtn.style.pointerEvents = 'none';
+      return;
+    }
+
+    container.innerHTML = items.map(item => `
+      <div class="mini-cart-item">
+        <div class="mini-cart-item-name">${item.name}</div>
+        <div class="mini-cart-item-qty">×${item.qty}</div>
+        <div class="mini-cart-item-price">${fmt(item.price * item.qty)}</div>
+        <button class="remove-btn" onclick="removeItem('${item.sku}')">×</button>
+      </div>`).join('');
+
+    totalEl.textContent = fmt(Cart.subtotal());
+    checkoutBtn.style.opacity = '1';
+    checkoutBtn.style.pointerEvents = 'auto';
+  }
+
+  function removeItem(sku) {
+    Cart.remove(sku);
+    renderMiniCart();
+  }
+
+  // Filter listeners
+  ['search', 'category-filter'].forEach(id => {
+    document.getElementById(id).addEventListener('input', () => renderProducts(applyFilters()));
+    document.getElementById(id).addEventListener('change', () => renderProducts(applyFilters()));
+  });
+
+  window.addEventListener('cartUpdated', renderMiniCart);
+
+  loadProducts();
+  renderMiniCart();
+</script>
+</body>
+</html>
