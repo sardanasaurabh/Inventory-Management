@@ -5,8 +5,7 @@
 
 const APP_CONFIG = {
   // Paste your deployed Google Apps Script Web App URL here:
-  API_URL: "https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec",
-
+  API_URL: "https://script.google.com/macros/s/AKfycbzNLjsnQwKsvoU11rraEr6Vno5jcg8iZm2-QMWW5LoqnTDw5Lldt4WtfnYDvJVtTXK4_Q/exec",
   STORE_NAME: "My Inventory Store",
   CURRENCY: "₹",          // Change to $ £ € etc.
   TAX_RATE: 0.18,          // 18% GST — set to 0 if no tax
